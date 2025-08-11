@@ -1,7 +1,7 @@
 # scripts/test_cruzamento.py
 import os, sys, logging
 sys.path.append("src")
-
+from cruzar_orcamento.exporters.excel import export_cruzamento_excel
 from cruzar_orcamento.adapters.orcamento import load_orcamento
 from cruzar_orcamento.adapters.sudecap import load_sudecap
 from cruzar_orcamento.processor import cruzar
@@ -45,3 +45,5 @@ if diverg:
         dif_abs_str = f"{d['dif_abs']:.6f}" if d["dif_abs"] is not None else "n/a"
         dif_rel_pct_str = f"{d['dif_rel']*100:.4f}%" if d["dif_rel"] is not None else "n/a"
         print(f"- {d['codigo']} | motivos={d['motivos']} | Δabs={dif_abs_str} | Δrel={dif_rel_pct_str}")
+out_path = export_cruzamento_excel(cruzado, diverg, "output/cruzamento.xlsx")
+print(f"Excel gerado em: {out_path}")

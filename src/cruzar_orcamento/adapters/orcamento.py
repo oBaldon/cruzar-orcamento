@@ -85,6 +85,7 @@ def load_orcamento(
     path: str,
     sheets: list[str | int] | None = None,  # se None, tenta "Composições"
     banco: str | None = None,               # se existir coluna
+    valor_scale: float = 1.0,   
 ) -> CanonDict:
     """
     Lê a(s) aba(s) **Composições** e retorna Dict[codigo, Item] no esquema canônico,
@@ -154,6 +155,10 @@ def load_orcamento(
         proj["DESCRICAO_ORC"] = proj["DESCRICAO_ORC"].astype(str).str.strip()
 
 
+        # garantir numérico e aplicar escala (ex.: 0.01 se vier 100x)
+        proj["VALOR_ORC"] = pd.to_numeric(proj["VALOR_ORC"], errors="coerce")
+        if valor_scale != 1.0:
+            proj["VALOR_ORC"] = proj["VALOR_ORC"] * float(valor_scale)
 
         if banco and "BANCO" in proj.columns:
             alvo = _norm(banco)
