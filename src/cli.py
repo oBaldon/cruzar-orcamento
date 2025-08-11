@@ -11,6 +11,7 @@ from cruzar_orcamento.adapters.orcamento import load_orcamento
 from cruzar_orcamento.adapters.sudecap import load_sudecap
 from cruzar_orcamento.processor import cruzar
 from cruzar_orcamento.exporters.excel import export_cruzamento_excel
+from cruzar_orcamento.adapters.sinapi import load_sinapi_ccd_pr
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="""
 Cruzar Orçamento x Bancos de Referência.
@@ -46,8 +47,11 @@ def run(
 
     if ref_type_norm == "SUDECAP":
         ref_dict = load_sudecap(str(ref))
+    elif ref_type_norm == "SINAPI":
+        ref_dict = load_sinapi_ccd_pr(str(ref), cidade="CURITIBA")
     else:
-        raise typer.BadParameter(f"ref_type '{ref_type}' não suportado ainda. Use: SUDECAP")
+        raise typer.BadParameter("ref_type não suportado. Use: SUDECAP, SINAPI")
+
 
     # tolerâncias
     # tol_abs/tol_rel = 0.0 significa “qualquer diferença marca divergência”
