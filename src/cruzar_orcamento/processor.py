@@ -68,7 +68,8 @@ def cruzar(
     diverg: List[DivergenciaRow] = []
 
     for codigo, a in A.items():
-        b = referencia.get(codigo)
+        codigo_base = a["codigo"]
+        b = referencia.get(codigo_base)
         match = b is not None
 
         b_desc = b["descricao"] if b else None
@@ -76,7 +77,7 @@ def cruzar(
         a_val  = a["valor_unit"]
 
         cruzado.append(CruzadoRow(
-            codigo=codigo,
+            codigo=codigo_base,
             a_banco=a.get("banco"),
             a_desc=a["descricao"],
             a_valor=a_val,
@@ -114,7 +115,7 @@ def cruzar(
 
         if motivos:
             diverg.append(DivergenciaRow(
-                codigo=codigo,
+                codigo=codigo_base,
                 motivos=motivos,
                 dif_abs=dif_abs,
                 dif_rel=dif_rel,

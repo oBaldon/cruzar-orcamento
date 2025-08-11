@@ -171,13 +171,23 @@ def load_orcamento(
         raise RuntimeError("Nenhuma aba de 'Composições' válida foi encontrada.")
 
     df_all = pd.concat(frames, ignore_index=True)
-
+    
+    # ---- construir Dict[chave_unica, Item] ----
     out: CanonDict = {}
-    dup_count = 0
+    occ_counter: dict[str, int] = {}
+
     for _, row in df_all.iterrows():
-        codigo = row["CODIGO_ORC"]
+        codigo_base = row["CODIGO_ORC"]
+
+        # conta ocorrência deste código
+        occ = occ_counter.get(codigo_base, 0) + 1
+        occ_counter[codigo_base] = occ
+
+        # chave única para esta ocorrência (não confundir com o código base)
+        key = f"{codigo_base}__occ{occ}"
+
         item: Item = {
-            "codigo": codigo,
+            "codigo": codigo_base,  # mantém o código 'real' aqui
             "descricao": row["DESCRICAO_ORC"],
             "valor_unit": float(row["VALOR_ORC"]) if pd.notna(row["VALOR_ORC"]) else 0.0,
             "fonte": "ORCAMENTO",
@@ -185,18 +195,11 @@ def load_orcamento(
         if "BANCO" in df_all.columns:
             item["banco"] = str(row.get("BANCO", "")).strip()
 
-        if codigo in out:
-            dup_count += 1
-            logger.warning(
-                f"Código duplicado detectado: {codigo!r} "
-                f"(substituindo '{out[codigo]['descricao']}' → '{item['descricao']}')"
-            )
-        out[codigo] = item
+        out[key] = item
 
-    if dup_count:
-        logger.warning(
-            "Detectados %d código(s) duplicado(s) em Composições; mantendo o último.",
-            dup_count
-        )
+    # log opcional: quantos duplicados de fato existem
+    dup_total = sum(occ - 1 for occ in occ_counter.values() if occ > 1)
+    if dup_total:
+        logger.info("ORÇAMENTO: %d ocorrência(s) duplicada(s) mantidas como entradas distintas.", dup_total)
 
     return out
