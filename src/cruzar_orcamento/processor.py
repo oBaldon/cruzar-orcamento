@@ -21,6 +21,7 @@ class DivergenciaRow(TypedDict):
     motivos: List[str]
     dif_abs: Optional[float]
     dif_rel: Optional[float]
+    dir: str  # "MAIOR" | "MENOR" | "IGUAL" | ""
 
 
 def filtrar_orcamento_por_banco(orc: CanonDict, banco: Optional[str]) -> CanonDict:
@@ -37,6 +38,17 @@ def filtrar_orcamento_por_banco(orc: CanonDict, banco: Optional[str]) -> CanonDi
     }
 
 
+def _dir(a_val: Optional[float], b_val: Optional[float]) -> str:
+    """Direção da divergência (referência = banco externo)."""
+    if a_val is None or b_val is None:
+        return ""
+    if a_val > b_val:
+        return "MAIOR"   # orçamento > referência
+    if a_val < b_val:
+        return "MENOR"   # orçamento < referência
+    return "IGUAL"
+
+
 def cruzar(
     orcamento: CanonDict,
     referencia: CanonDict,
@@ -45,7 +57,7 @@ def cruzar(
     tol_rel: float = 0.02,              # 2% por padrão
     comparar_descricao: bool = True,
 ) -> Tuple[List[CruzadoRow], List[DivergenciaRow]]:
-    """Cruza dicionário de ORÇAMENTO (A) com dicionário de referência (B) (ex.: SUDECAP).
+    """Cruza dicionário de ORÇAMENTO (A) com dicionário de referência (B) (ex.: SUDECAP/SINAPI).
 
     - Se `banco` for informado, o orçamento é filtrado antes do match.
     - Divergência de valor: |A-B|/B > tol_rel (quando B > 0).
@@ -61,32 +73,39 @@ def cruzar(
 
         b_desc = b["descricao"] if b else None
         b_val  = b["valor_unit"] if b else None
+        a_val  = a["valor_unit"]
 
         cruzado.append(CruzadoRow(
             codigo=codigo,
             a_banco=a.get("banco"),
             a_desc=a["descricao"],
-            a_valor=a["valor_unit"],
+            a_valor=a_val,
             b_desc=b_desc,
             b_valor=b_val,
             match=match,
         ))
 
         motivos: List[str] = []
-        dif_abs = dif_rel = None
+        dif_abs: Optional[float] = None
+        dif_rel: Optional[float] = None
+        direcao: str = ""
 
         if not match:
             motivos.append("CODIGO_NAO_ENCONTRADO")
+            # direção permanece "", pois não há valor de referência
         else:
             # valor
             if b_val is None or b_val == 0:
-                if a["valor_unit"] != (b_val or 0):
+                # referência zerada/nula: só marcamos se forem diferentes
+                if a_val != (b_val or 0):
                     motivos.append("VALOR_BASE_ZERO_OU_NULO")
+                    direcao = _dir(a_val, b_val or 0.0)
             else:
-                dif_abs = abs(a["valor_unit"] - b_val)
+                dif_abs = abs(a_val - b_val)
                 dif_rel = dif_abs / b_val
                 if dif_rel > tol_rel:
                     motivos.append("VALOR_DIVERGENTE")
+                    direcao = _dir(a_val, b_val)
 
             # descrição
             if comparar_descricao:
@@ -99,6 +118,7 @@ def cruzar(
                 motivos=motivos,
                 dif_abs=dif_abs,
                 dif_rel=dif_rel,
+                dir=direcao,
             ))
 
     return cruzado, diverg
