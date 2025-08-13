@@ -1,0 +1,66 @@
+[
+  {
+    "pai_codigo": "01.12.01",
+    "pai_desc_a": "VISTORIA CAUTELAR - ÁREA CONSTRUÍDA <= 100M2",
+    "pai_desc_b": null,
+    "filhos_missing": [
+      "54.40.06",
+      "55.15.07",
+      "55.20.05",
+      "68.01.03",
+      "94.07.01",
+      "94.09.11",
+      "94.11.01",
+      "94.12.02"
+    ],
+    "filhos_extra": [],
+    "filhos_desc_mismatch": []
+  },
+  {
+    "pai_codigo": "63540",
+    "pai_desc_a": "MAO DE OBRA PARA SUBSTITUICAO DE DRIVER",
+    "pai_desc_b": null,
+    "filhos_missing": [
+      "99250",
+      "99806"
+    ],
+    "filhos_extra": [],
+    "filhos_desc_mismatch": []
+  },
+  {
+    "pai_codigo": "41.31.070",
+    "pai_desc_a": "Luminária LED quadrada de sobrepor com difusor prismático translúcido, 4000 K, fluxo luminoso de 1363 a 1800 lm, potência de 15 W a 24 W",
+    "pai_desc_b": null,
+    "filhos_missing": [
+      "B.01.000.010115",
+      "B.01.000.010116",
+      "B.07.000.049501",
+      "P.15.000.090205"
+    ],
+    "filhos_extra": [],
+    "filhos_desc_mismatch": []
+  },
+  {
+    "pai_codigo": "60814",
+    "pai_desc_a": "DRIVER PARA LUMINARIA LED MULTITENSAO (100 ~250 V)",
+    "pai_desc_b": null,
+    "filhos_missing": [
+      "203066",
+      "3420",
+      "99250",
+      "99806"
+    ],
+    "filhos_extra": [],
+    "filhos_desc_mismatch": []
+  },
+  {
+    "pai_codigo": "20408",
+    "pai_desc_a": "LIMPEZA E DESOBSTRUCAO DE IMOVEL PARA REFORMA",
+    "pai_desc_b": null,
+    "filhos_missing": [
+      "99900"
+    ],
+    "filhos_extra": [],
+    "filhos_desc_mismatch": []
+  }
+]
