@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import sys, os
-sys.path.insert(0, os.path.abspath("src"))
-import argparse
+import sys
+import os
 from datetime import date
+import argparse
 
-from cruzar_orcamento.fetchers.base import (
-    fetch_latest,
-    find_latest_available,
-    _fmt_file,      # só pra montar o nome local
+# Permitir imports relativos ao projeto
+sys.path.insert(0, os.path.abspath("src"))
+
+# Importa funções específicas do SUDECAP
+from cruzar_orcamento.fetchers.providers.sudecap import (
+    find_latest_sudecap,
+    fetch_latest_sudecap,
 )
-from cruzar_orcamento.fetchers.providers.sudecap import SUDECAP_PLAN
-from cruzar_orcamento.fetchers.http import download_file
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -27,16 +27,31 @@ def main():
     )
     parser.add_argument("--year", type=int, help="Ano base/alvo. retro: base; year: ano alvo.")
     parser.add_argument("--month", type=int, help="Mês base (1-12), apenas no modo retro.")
-    parser.add_argument("--back", type=int, default=24, help="retro: voltar até N meses (padrão: 24).")
+    parser.add_argument(
+        "--back",
+        type=int,
+        default=24,
+        help="retro: voltar até N meses (padrão: 24).",
+    )
+    parser.add_argument(
+        "--out-dir",
+        type=str,
+        default="data",
+        help="Diretório onde salvar o arquivo baixado.",
+    )
     args = parser.parse_args()
 
     today = date.today()
 
     if args.mode == "retro":
         base = date(args.year or today.year, args.month or today.month, 1)
-        print(f">> [RETRO] Buscando {SUDECAP_PLAN.name} a partir de {base:%Y-%m} (back={args.back})…")
+        print(f">> [RETRO] Buscando SUDECAP a partir de {base:%Y-%m} (back={args.back})…")
         try:
-            dest = fetch_latest(SUDECAP_PLAN, base, max_months_back=args.back)
+            dest = fetch_latest_sudecap(
+                base,
+                max_months_back=args.back,
+                out_dir=args.out_dir,
+            )
         except Exception as e:
             print(f"[ERRO] {e}", file=sys.stderr)
             sys.exit(2)
@@ -46,27 +61,30 @@ def main():
         if not args.year:
             print("[ERRO] --year é obrigatório no modo 'year'", file=sys.stderr)
             sys.exit(2)
-        print(f">> [YEAR] Buscando a última versão de {SUDECAP_PLAN.name} em {args.year}…")
+
+        # Busca do mês 12 até o 1 do ano informado
+        start = date(args.year, 12, 1)
+        print(f">> [YEAR] Buscando a última versão de SUDECAP em {args.year}…")
         try:
-            d, url = find_latest_available(SUDECAP_PLAN, args.year)
+            d, url = find_latest_sudecap(
+                start,
+                max_months_back=11,
+            )
         except Exception as e:
             print(f"[ERRO] {e}", file=sys.stderr)
             sys.exit(2)
 
-        # baixa para data/SUDECAP_YYYY_MM.xls
-        fname = _fmt_file(SUDECAP_PLAN.file_pattern, d)
-        import os
-        os.makedirs(SUDECAP_PLAN.out_dir, exist_ok=True)
-        dest = os.path.join(SUDECAP_PLAN.out_dir, fname)
-
         print(f">> Encontrado: {d:%Y-%m} | URL: {url}")
         try:
-            download_file(url, dest)
+            dest = fetch_latest_sudecap(
+                d,
+                max_months_back=0,
+                out_dir=args.out_dir,
+            )
         except Exception as e:
             print(f"[ERRO] Falha ao baixar {url}: {e}", file=sys.stderr)
             sys.exit(3)
         print(f">> OK: baixado em {dest}")
-
 
 if __name__ == "__main__":
     main()
