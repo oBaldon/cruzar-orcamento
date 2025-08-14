@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable, List, Dict, Optional
+from typing import Iterable, List, Optional
 import unicodedata
 import pandas as pd
 
 from ..models import EstruturaDict, CompEstrutura, ChildSpec
-from ..utils.utils_code import norm_code_canonical  # <-- NOVO normalizador
+from ..utils.utils_code import norm_code_canonical  # normalizador de códigos
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ _COL_CANDIDATES = {
     "codigo":    ("codigo", "código", "cod.", "cod"),
     "descricao": ("descricao", "descrição", "descr"),
     "tipo":      ("tipo",),  # pode não ser exatamente 'Tipo'; vamos detectar
+    "banco":     ("banco", "base", "fonte"),  # coluna opcional para filtro por banco
 }
 
 def _build_lookup(columns: Iterable[str]) -> dict[str, str]:
@@ -82,11 +83,15 @@ def _detect_tipo_column(df: pd.DataFrame) -> Optional[str]:
 def load_estrutura_orcamento(
     path: str,
     sheets: List[str | int] | None = None,
+    banco: str | None = None,   # <-- filtro opcional por banco (aplicado no PAI)
 ) -> EstruturaDict:
     """
     Lê a(s) aba(s) de **Composições** do ORÇAMENTO e monta a estrutura:
       - Pai = linha com tipo 'Composição'
       - Filhos = linhas seguintes com 'Composição Auxiliar' ou 'Insumo', até a próxima 'Composição'
+
+    Se `banco` for informado, mantém apenas PAIS cuja linha (de 'Composição') tenha a coluna BANCO/Base/Fonte
+    igual ao banco desejado (case-insensitive). Se a coluna de banco não existir, o filtro é ignorado nessa aba.
 
     Retorna um EstruturaDict: {codigo_pai: {codigo, descricao, filhos[], fonte="ORCAMENTO"}}
     """
@@ -106,6 +111,8 @@ def load_estrutura_orcamento(
     filhos_detectados = 0
     pais_duplicados = 0
 
+    alvo_banco_norm = _norm(banco) if banco else None
+
     for sheet in sheets:
         # localizar header
         df_raw = pd.read_excel(path, sheet_name=sheet, header=None)
@@ -120,6 +127,7 @@ def load_estrutura_orcamento(
         try:
             col_codigo = _pick_col(lookup, _COL_CANDIDATES["codigo"])
             col_desc   = _pick_col(lookup, _COL_CANDIDATES["descricao"])
+            col_banco  = _pick_col(lookup, _COL_CANDIDATES["banco"], required=False)  # opcional
         except KeyError as e:
             logger.warning(f"[{sheet}] {e}; pulando aba.")
             continue
@@ -132,10 +140,16 @@ def load_estrutura_orcamento(
             continue
 
         # projeção e limpeza base
-        proj = df[[col_codigo, col_desc, col_tipo]].copy()
-        proj.columns = ["CODIGO", "DESCRICAO", "TIPO"]
+        cols = [col_codigo, col_desc, col_tipo]
+        newcols = ["CODIGO", "DESCRICAO", "TIPO"]
+        if col_banco:
+            cols.append(col_banco)
+            newcols.append("BANCO")
 
-        # Normalização de códigos com o novo normalizador
+        proj = df[cols].copy()
+        proj.columns = newcols
+
+        # Normalizações
         proj["CODIGO"] = proj["CODIGO"].map(norm_code_canonical)
         proj["DESCRICAO"] = proj["DESCRICAO"].astype(str).str.strip()
         tipo_norm = proj["TIPO"].astype(str).map(_norm)
@@ -145,6 +159,9 @@ def load_estrutura_orcamento(
         is_aux     = tipo_norm.str.contains(r"composicao\s*aux", regex=True, na=False)
         is_insumo  = tipo_norm.str.contains(r"\binsumo\b", regex=True, na=False)
 
+        if banco and ("BANCO" not in proj.columns):
+            logger.warning(f"[{sheet}] Filtro por banco={banco!r} solicitado, mas coluna de banco não encontrada; ignorando filtro nesta aba.")
+
         # varredura sequencial: ao achar PAI, começa grupo; filhos acumulam até próximo PAI
         current_pai: Optional[CompEstrutura] = None
 
@@ -153,16 +170,24 @@ def load_estrutura_orcamento(
             desc   = row["DESCRICAO"]
 
             if is_pai.loc[idx]:  # nova composição mestra
-                # se havia um pai em aberto, salvar
+                # fechar pai anterior, se houver
                 if current_pai is not None and current_pai["codigo"]:
-                    cod_pai = current_pai["codigo"]
-                    if cod_pai in estruturas:
+                    cod_pai_prev = current_pai["codigo"]
+                    if cod_pai_prev in estruturas:
                         pais_duplicados += 1
                         logger.warning(
-                            f"[{sheet}] Código de composição duplicado detectado (estrutura): {cod_pai!r} "
-                            f"(substituindo '{estruturas[cod_pai]['descricao']}' → '{current_pai['descricao']}')"
+                            f"[{sheet}] Código de composição duplicado detectado (estrutura): {cod_pai_prev!r} "
+                            f"(substituindo '{estruturas[cod_pai_prev]['descricao']}' → '{current_pai['descricao']}')"
                         )
-                    estruturas[cod_pai] = current_pai
+                    estruturas[cod_pai_prev] = current_pai
+
+                # aplicar filtro por banco no PAI (se solicitado e houver coluna)
+                if alvo_banco_norm and ("BANCO" in proj.columns):
+                    row_banco_norm = _norm(row.get("BANCO", ""))
+                    if row_banco_norm != alvo_banco_norm:
+                        # ignorar este pai (fora do banco alvo)
+                        current_pai = None
+                        continue
 
                 # inicia novo pai
                 current_pai = CompEstrutura(
@@ -178,7 +203,7 @@ def load_estrutura_orcamento(
             if current_pai is not None and (is_aux.loc[idx] or is_insumo.loc[idx]):
                 if pd.notna(codigo) and str(codigo).strip():
                     filho: ChildSpec = {
-                        "codigo": norm_code_canonical(codigo),  # <-- normaliza também o filho
+                        "codigo": norm_code_canonical(codigo),  # normaliza também o filho
                         "descricao": str(desc) if pd.notna(desc) else "",
                     }
                     current_pai["filhos"].append(filho)
