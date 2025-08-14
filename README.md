@@ -1,247 +1,222 @@
 # cruzar-orcamento
 
-Pipeline para **cruzar composições do seu ORÇAMENTO** com **bancos de referência** (SUDECAP, SINAPI CCD/PR), sinalizando divergências de preço e descrição, e exportando um Excel com abas de **cruzado** e **divergências**.
+Ferramentas para **cruzar preços** e **validar a estrutura de composições** entre um **Orçamento** (planilha do cliente) e bancos de referência **SUDECAP** e **SINAPI**.
+
+> Saídas em **JSON**, adequadas para consumo por aplicações web ou pipelines de dados.
 
 ---
 
 ## Sumário
-
-- [Arquitetura](#arquitetura)
+- [Visão geral](#visão-geral)
 - [Instalação](#instalação)
-- [Arquivos de entrada](#arquivos-de-entrada)
-- [Como usar (CLI)](#como-usar-cli)
-  - [`run` – cruzar um orçamento com 1 referência](#run--cruzar-um-orçamento-com-1-referência)
-  - [`run-both-auto` – rodar SINAPI e SUDECAP de uma vez](#run-both-auto--rodar-sinapi-e-sudecap-de-uma-vez)
-  - [`fetch-all` – (opcional) baixar automaticamente referências](#fetch-all--opcional-baixar-automaticamente-referências)
-- [Lógica de cruzamento](#lógica-de-cruzamento)
-- [Exportação para Excel](#exportação-para-excel)
-- [Adapters (parsers)](#adapters-parsers)
+- [Formato dos arquivos de entrada](#formato-dos-arquivos-de-entrada)
   - [Orçamento (Composições)](#orçamento-composições)
-  - [SUDECAP](#sudecap)
-  - [SINAPI CCD (Paraná)](#sinapi-ccd-paraná)
-- [Fetchers (opcional)](#fetchers-opcional)
-- [Convenções de nomes (data/)](#convenções-de-nomes-data)
-- [Roadmap / Próximos passos](#roadmap--próximos-passos)
+  - [SINAPI (Analítico)](#sinapi-analítico)
+  - [SUDECAP (Relatório de Composições)](#sudecap-relatório-de-composições)
+- [Como usar (CLI)](#como-usar-cli)
+  - [Preços — cruzamento manual](#preços--cruzamento-manual)
+  - [Preços — cruzamento automático](#preços--cruzamento-automático)
+  - [Estrutura — validação (pais/filhos de 1º nível)](#estrutura--validação-paisfilhos-de-1º-nível)
+- [Esquemas de JSON](#esquemas-de-json)
+  - [Saída — Preços](#saída--preços)
+  - [Saída — Estrutura](#saída--estrutura)
+- [Dicas e resolução de problemas](#dicas-e-resolução-de-problemas)
+- [Licença](#licença)
 
 ---
 
-## Arquitetura
+## Visão geral
 
-```
-src/
-  cruzar_orcamento/
-    adapters/
-      orcamento.py      # lê a aba "Composições" do orçamento
-      sudecap.py        # lê a planilha SUDECAP
-      sinapi.py         # lê SINAPI CCD (PR)
-    processor.py        # cruza A (orc) vs B (banco) e aponta divergências
-    exporters/
-      excel.py          # gera Excel com abas 'cruzado' e 'divergencias'
-    fetchers/           # opcional: baixar arquivos (SINAPI ZIP, SUDECAP)
-      base.py
-      http.py
-      providers/
-        sinapi.py
-        sudecap.py
-  cli.py                # interface de linha de comando (Typer)
-scripts/
-  test_cruzamento.py    # smoke tests locais
-  test_fetch_*.py       # testes de fetchers (opcional)
-```
+O projeto possui **adapters** para ler e normalizar planilhas de diferentes origens (Orçamento, SINAPI, SUDECAP), **validators/processors** para aplicar as regras de comparação e **exporters** para gravar os resultados em **JSON**.
+
+Funcionalidades principais:
+
+1. **Cruzamento de preços** por **código** (com filtro opcional por `banco` no Orçamento) entre:
+   - Orçamento × SINAPI
+   - Orçamento × SUDECAP
+
+2. **Validação de estrutura** de composições no **1º nível** (pais → filhos), comparando:
+   - Orçamento (apenas composições de um banco específico) × SINAPI (aba *Analítico*)
+   - Orçamento (apenas composições de um banco específico) × SUDECAP (Relatório de Composições)
+
+Saídas sempre em **JSON** dentro de `output/` (configurável por parâmetro).
 
 ---
 
 ## Instalação
 
-Recomendado Python 3.11+.
+Requer **Python 3.10+** (recomendado 3.12).
 
 ```bash
+git clone https://github.com/oBaldon/cruzar-orcamento.git
+cd cruzar-orcamento
 python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install pandas openpyxl typer requests # etc.
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Para ler **.xls** (SUDECAP), é necessário `xlrd` (se disponível no seu ambiente). Se não, converta o arquivo para **.xlsx** ou use o suporte atual que lê `.xls` com `xlrd` quando presente.
+> Para leitura de arquivos **.xls** (SUDECAP), é necessário o pacote `xlrd`.
+> Se houver erro ao instalar, você pode converter o `.xls` para `.xlsx` manualmente e usar o arquivo convertido.
 
 ---
 
-## Arquivos de entrada
+## Formato dos arquivos de entrada
 
-- **Orçamento (Excel)**:
-  - Contém a aba **Composições** (ou similar).
-  - Deve ter colunas equivalentes a: **Código**, **Descrição**, **Valor Unitário**; opcional **Banco/Base/Fonte** e **Tipo**.
-  - A coluna **Tipo** (ou outra coluna que contenha “Composição/Composição Auxiliar”) é detectada automaticamente; apenas esses tipos são importados.
+### Orçamento (Composições)
 
-- **Referências**:
-  - **SUDECAP**: planilha **.xls** no formato oficial.
-  - **SINAPI CCD/PR**: arquivo **`SINAPI_YYYY_MM.xlsx`** (internamente extraído do ZIP mensal). Usamos a coluna **PR → CURITIBA → “Custo (R$)”**.
+- Ler da(s) aba(s) que contenham a palavra **“Composições”** (varredura automática).
+- Deve conter colunas reconhecíveis como **Código**, **Descrição** e **Tipo**.
+- A coluna **Tipo** deve distinguir **Composição** (pai), **Composição Auxiliar** e **Insumo**.
+- O **banco** da composição do Orçamento (ex.: *SINAPI*, *SUDECAP*) é utilizado para **filtrar** o que será comparado.
 
-Coloque os arquivos em `data/` com os nomes padronizados (ver [Convenções](#convenções-de-nomes-data)).
+> Apenas o **1º nível** de filhos é considerado (não “explode” composições auxiliares).
+
+### SINAPI (Analítico)
+
+- Usar a aba **`Analítico`**.
+- Colunas esperadas (posicionais):
+  - **B**: código da composição **pai**.
+  - **C**: tipo do filho (`INSUMO`/`COMPOSICAO`).
+  - **D**: código do **filho**.
+  - **B..G**: descrição do **pai** (concatenação).
+  - **C..G**: descrição do **filho** (concatenação).
+
+### SUDECAP (Relatório de Composições)
+
+- Planilha com título “**Relatório de Composições de Construção**” (desonerada).
+- Colunas esperadas (posicionais):
+  - **A**: código da composição **pai** (quando preenchida, inicia um novo pai).
+  - **B**: código do **filho** (nas linhas onde **A** está vazia).
+  - **B..G**: descrição do **pai** (na linha do pai).
+  - **C..G**: descrição do **filho** (nas linhas sem código em A).
+
+> Em ambas as bases, os **códigos** são **normalizados**: remoção de sufixo `.0` e de **zeros à esquerda** quando presente.
 
 ---
 
 ## Como usar (CLI)
 
-### `run` – cruzar um orçamento com 1 referência
+Todos os comandos abaixo assumem o ambiente virtual ativo e o diretório do projeto como `cwd`.
+
+### Preços — cruzamento manual
+
+**Orçamento × SINAPI**:
 
 ```bash
-python -m src.cli run   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --ref "data/2025.04-tabela-de-construcao-desonerada.xls"   --ref-type SUDECAP   --banco SUDECAP   --tol-rel 0.0   --out output/cruzamento_sudecap.xlsx
+python -m src.cli precos manual   --orc "data/ORÇAMENTO.xlsx"   --ref "data/SINAPI_2025_06.xlsx"   --ref-type SINAPI   --banco SINAPI   --tol-rel 0.00   --out-json "output/cruzamento_precos_sinapi_2025_06.json"
 ```
 
-Para SINAPI (CCD/PR):
+**Orçamento × SUDECAP**:
 
 ```bash
-python -m src.cli run   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --ref "data/SINAPI_2025_06.xlsx"   --ref-type SINAPI   --banco SINAPI   --tol-rel 0.0   --out output/cruzamento_sinapi.xlsx
+python -m src.cli precos manual   --orc "data/ORÇAMENTO.xlsx"   --ref "data/SUDECAP_2025_04.xls"   --ref-type SUDECAP   --banco SUDECAP   --tol-rel 0.00   --out-json "output/cruzamento_precos_sudecap_2025_04.json"
 ```
 
-Parâmetros relevantes:
-- `--banco`: filtra o orçamento por banco antes do cruzamento (e.g., `SUDECAP`, `SINAPI`).
-- `--tol-rel`: tolerância relativa (fração). `0.02 = 2%`. Com `0.0`, qualquer diferença marca divergência.
-- `--valor_scale`: fator multiplicador nos valores do orçamento (ex.: `0.01` se o arquivo vier 100×).
+### Preços — cruzamento automático
 
-### `run-both-auto` – rodar SINAPI e SUDECAP de uma vez
-
-Carrega o orçamento uma única vez e cruza com **os arquivos mais recentes encontrados em `data/`**:
+Usa os arquivos **mais recentes** do diretório `data/` no padrão `SINAPI_YYYY_MM.xlsx` e `SUDECAP_YYYY_MM.xls|xlsx`:
 
 ```bash
-python -m src.cli run-both-auto   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --tol-rel 0.0   --out-dir output
+python -m src.cli precos auto   --orc "data/ORÇAMENTO.xlsx"   --out-dir output
 ```
 
-Gera:
-- `output/cruzamento_sinapi_YYYY_MM.xlsx`
-- `output/cruzamento_sudecap_YYYY_MM.xlsx`
+Gera dois arquivos JSON: um para **SINAPI** e outro para **SUDECAP**.
 
-> Por padrão **não baixa** automaticamente. Se desejar ligar os fetchers no futuro, o comando já tem `--fetch` (padrão desativado por ora).
+### Estrutura — validação (pais/filhos de 1º nível)
 
-### `fetch-all` – (opcional) baixar automaticamente referências
-
-**Desativado por padrão** no fluxo principal, mas pronto para uso quando quiser:
+**Orçamento (somente composições do banco SINAPI) × SINAPI (Analítico)**:
 
 ```bash
-python -m src.cli fetch-all --back 18
+python -m src.cli estrutura validar   --orc "data/ORÇAMENTO.xlsx"   --banco-a SINAPI   --base "data/SINAPI_2025_06.xlsx"   --base-type SINAPI   --json-out "output/diverg_estrutura_sinapi.json"
 ```
 
-- Baixa o **SINAPI** (ZIP do mês mais recente → extrai apenas `SINAPI_Referência_YYYY_MM.xlsx` e salva como `SINAPI_YYYY_MM.xlsx`).
-- Tenta baixar o **SUDECAP** no padrão oficial de URL.
-
----
-
-## Lógica de cruzamento
-
-No `processor.py`:
-
-- O orçamento **A** pode ser filtrado por `--banco` antes do match.
-- Para cada `codigo`:
-  - **Match por código** com a referência **B**.
-  - **Divergência de valor**:  
-    - Se `B.valor > 0`: `dif_abs = |A-B|`, `dif_rel = dif_abs / B`; marca **VALOR_DIVERGENTE** se `dif_rel > tol_rel`.
-    - Se `B.valor` nulo/zero e `A != 0`: marca **VALOR_BASE_ZERO_OU_NULO**.
-    - Calcula ainda a **direção** da diferença: `dir = "MAIOR" | "MENOR" | "IGUAL"` comparando `A` vs `B`.
-  - **Divergência de descrição** (opcional): compara versões normalizadas (casefold + sem acento). Se diferente, marca **DESCRICAO_DIVERGENTE**.
-
-### Sobre códigos duplicados no orçamento
-- O adapter de **orçamento** atualmente **log**a duplicados e **mantém o último** (o dicionário é por código). Isso preserva a compatibilidade do pipeline atual.
-
----
-
-## Exportação para Excel
-
-Exporta duas abas:
-
-- **`cruzado`**  
-  Colunas: `codigo, a_banco, a_desc, a_valor, b_desc, b_valor, match`
-
-- **`divergencias`**  
-  Colunas: `codigo, motivos[], dif_abs, dif_rel, dir`  
-  - `dir` indica **se o orçamento está MAIOR/MENOR/IGUAL** à referência (quando aplicável).
-
----
-
-## Adapters (parsers)
-
-### Orçamento (Composições)
-
-- Detecta automaticamente a linha de cabeçalho e a coluna de **Tipo** (mesmo que não se chame “Tipo”).
-- Filtra **apenas** linhas cujo tipo seja **“Composição”** ou **“Composição Auxiliar”**.
-- Lê `Código`, `Descrição`, `Valor Unitário` e, se existir, **Banco/Base/Fonte**.
-- Converte valores com segurança; aceita vírgula decimal e normaliza para `float`.
-- `valor_scale` permite corrigir arquivos que venham com escala incorreta (e.g. 100×).
-
-### SUDECAP
-
-- Lê o Excel oficial (`.xls`).
-- A resolução de códigos, descrições e valores segue o layout publicado.
-- Requer `xlrd` para `.xls` no seu ambiente (ou converter para `.xlsx`).
-
-### SINAPI CCD (Paraná)
-
-- Lê `SINAPI_YYYY_MM.xlsx` (extraído do ZIP oficial).
-- Cabeçalho multinível: procura `("PR", "CURITIBA")` → coluna **“Custo (R$)”**.
-- **Códigos** podem vir encapsulados em fórmulas `HYPERLINK(...)`; o parser extrai o número final (ex.: `=HIPERLINK(...;105002)` → `105002`).
-- Normaliza decimais com vírgula (e.g. `1.234,77` → `1234.77`).
-
----
-
-## Fetchers (opcional)
-
-- **SINAPI (ZIP)**  
-  Busca retroativa mês a mês e baixa o ZIP, extraindo **apenas** `SINAPI_Referência_YYYY_MM.xlsx`, salvando como `data/SINAPI_YYYY_MM.xlsx`.  
-  Se algo falhar, há suporte a logs simples (pode ser habilitado se necessário).
-
-- **SUDECAP**  
-  Monte de URL fixa: `AAAA.MM-tabela-de-construcao-desonerada.xls`.  
-  Implementamos uma rotina “robusta” de verificação via **GET stream** (sem `HEAD/Range`) e **logs de diagnóstico** em `data/_debug_sudecap_YYYY_MM.log` quando a resposta parece HTML/portal ao invés de arquivo.  
-  **No fluxo atual do CLI, os fetchers ficam desativados** por padrão.
-
----
-
-## Convenções de nomes (`data/`)
-
-Os nomes padrão permitem o `run-both-auto` encontrar “o mais recente” sem parâmetros:
-
-- `data/SINAPI_YYYY_MM.xlsx` – referência CCD/PR (arquivo extraído do ZIP).
-- `data/SUDECAP_YYYY_MM.xls` – referência SUDECAP.
-- `data/ORÇAMENTO*.xlsx` – seu orçamento (nome livre).
-
----
-
-## Roadmap / Próximos passos
-
-- **Novos adapters**:
-  - **CPOS/CDHU** (acesso em andamento).
-  - **SBC** (acesso pago – aguardar).
-- **CLI**:
-  - Reabilitar `--fetch` como padrão quando os portais estabilizarem (código já preparado).
-  - Suporte a **tolerância absoluta** (`tol_abs`) no `processor`.
-- **Exportação**:
-  - Exportar um **CSV adicional** ou **aba com estatísticas** (totais por motivo, % de divergências).
-- **Front-end**:
-  - Camada web para subir orçamento, escolher banco e baixar o relatório.
-- **Dados duplicados no orçamento**:
-  - Opcional: evolução do schema para lidar com múltiplas ocorrências do mesmo código (hoje mantemos o último para manter a compatibilidade de dicionário → cruzamento).
-
----
-
-## Exemplos rápidos
-
-Cruzamento SUDECAP:
+**Orçamento (somente SUDECAP) × SUDECAP (Relatório de Composições)**:
 
 ```bash
-python -m src.cli run   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --ref "data/SUDECAP_2025_04.xls"   --ref-type SUDECAP   --banco SUDECAP   --tol-rel 0.0   --out output/cruzamento_sudecap_2025_04.xlsx
+python -m src.cli estrutura validar   --orc "data/ORÇAMENTO.xlsx"   --banco-a SUDECAP   --base "data/SUDECAP_2025_04.xls"   --base-type SUDECAP   --json-out "output/diverg_estrutura_sudecap.json"
 ```
 
-Cruzamento SINAPI (CCD/PR):
-
-```bash
-python -m src.cli run   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --ref "data/SINAPI_2025_06.xlsx"   --ref-type SINAPI   --banco SINAPI   --tol-rel 0.0   --out output/cruzamento_sinapi_2025_06.xlsx
-```
-
-Rodar ambos automaticamente com os últimos arquivos em `data/`:
-
-```bash
-python -m src.cli run-both-auto   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 05 final.xlsx"   --tol-rel 0.0   --out-dir output
-```
+> Também é possível comparar **Orçamento × Orçamento** (útil para auditoria interna) usando `--base-type ORCAMENTO`.
 
 ---
 
+## Esquemas de JSON
+
+### Saída — Preços
+
+Arquivo gerado por `precos manual/auto` (exemplo de estrutura simplificada):
+
+```json
+{
+  "resumo": {
+    "total_linhas": 123,
+    "total_divergencias": 7,
+    "tol_rel": 0.0
+  },
+  "linhas": [
+    {
+      "codigo": "88316",
+      "a_banco": "SINAPI",
+      "a_desc": "SERVENTE COM ENCARGOS COMPLEMENTARES",
+      "a_valor": 100.0,
+      "b_desc": "SERVENTE COM ENCARGOS COMPLEMENTARES",
+      "b_valor": 100.0,
+      "match": true,
+      "dif_abs": 0.0,
+      "dif_rel": 0.0
+    }
+  ],
+  "divergencias": [
+    {
+      "codigo": "90965",
+      "motivos": ["codigo_nao_encontrado_na_referencia"]
+    }
+  ]
+}
+```
+
+> Campos podem variar conforme a fonte; use a chave `linhas` para consumo principal e `divergencias` para destacar casos a tratar.
+
+### Saída — Estrutura
+
+Arquivo gerado por `estrutura validar` (por pai/compisição):
+
+```json
+[
+  {
+    "pai_codigo": "01.12.01",
+    "pai_desc_a": "VISTORIA CAUTELAR - ÁREA CONSTRUÍDA <= 100M2",
+    "pai_desc_b": "VISTORIA CAUTELAR - ÁREA CONSTRUÍDA <= 100M2",
+    "filhos_missing": ["94.12.02"],
+    "filhos_extra": ["94.12.03"],
+    "filhos_desc_mismatch": [
+      {
+        "codigo": "55.20.05",
+        "a_desc": "ENGENHEIRO INTERMEDIÁRIO (CARGA HORÁRIA 8H/DIA)",
+        "b_desc": "ENGENHEIRO INTERMEDIÁRIO"
+      }
+    ]
+  }
+]
+```
+
+- `filhos_missing`: existem no Orçamento e **faltam** na Base.
+- `filhos_extra`: existem na Base e **não** existem no Orçamento.
+- `filhos_desc_mismatch`: mesmo código em ambos, mas **descrições diferentes** (normalização sem acentos e case-insensitive).
+
+---
+
+## Dicas e resolução de problemas
+
+- **.xls (SUDECAP)**: instale `xlrd` ou converta o arquivo para `.xlsx`.
+- **Planilhas com layouts diferentes**: os adapters aplicam heurísticas para encontrar cabeçalhos e colunas. Se algo fugir muito do padrão, ajuste o adapter correspondente:
+  - `src/cruzar_orcamento/adapters/estrutura_orcamento.py`
+  - `src/cruzar_orcamento/adapters/estrutura_sinapi.py`
+  - `src/cruzar_orcamento/adapters/estrutura_sudecap.py`
+- **Normalização de códigos**: feita em `src/cruzar_orcamento/utils/utils_code.py` (`norm_code_canonical`) — remove `.0` finais e zeros à esquerda.
+
+---
+
+## Licença
+
+Projeto de uso interno.

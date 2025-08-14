@@ -8,7 +8,7 @@
     "ref": "data/SINAPI_2025_06.xlsx"
   },
   "total_cruzado": 15,
-  "total_divergencias": 1,
+  "total_divergencias": 4,
   "cruzado": [
     {
       "codigo": "97064",
@@ -22,15 +22,15 @@
       "dif_rel": 0.00032488628979850586
     },
     {
-      "codigo": "100251",
+      "codigo": "103251",
       "a_banco": "SINAPI",
       "a_desc": "TRANSPORTE HORIZONTAL MANUAL, DE TUBO DE AÇO CARBONO LEVE OU MÉDIO, PRETO OU GALVANIZADO, COM DIÂMETRO MAIOR QUE 32 MM E MENOR OU IGUAL A 65 MM (UNIDADE: MXKM). AF_07/2019",
       "a_valor": 16.3,
-      "b_desc": "TRANSPORTE HORIZONTAL MANUAL, DE TUBO DE AÇO CARBONO LEVE OU MÉDIO, PRETO OU GALVANIZADO, COM DIÂMETRO MAIOR QUE 32 MM E MENOR OU IGUAL A 65 MM (UNIDADE: MXKM). AF_07/2019",
-      "b_valor": 16.3,
+      "b_desc": "AR CONDICIONADO SPLIT ON/OFF, HI-WALL (PAREDE), 18000 BTUS/H, CICLO FRIO - FORNECIMENTO E INSTALAÇÃO. AF_11/2021_PE",
+      "b_valor": 3472.16,
       "match": true,
-      "dif_abs": 0.0,
-      "dif_rel": 0.0
+      "dif_abs": 3455.8599999999997,
+      "dif_rel": 0.9953055158748444
     },
     {
       "codigo": "88278",
@@ -46,7 +46,7 @@
     {
       "codigo": "88316",
       "a_banco": "SINAPI",
-      "a_desc": "SERVENTE COM ENCARGOS COMPLEMENTARES",
+      "a_desc": "SERVENTE COM ENCARGOS COMPLEMENTARES1",
       "a_valor": 26.65,
       "b_desc": "SERVENTE COM ENCARGOS COMPLEMENTARES",
       "b_valor": 26.65,
@@ -55,15 +55,15 @@
       "dif_rel": 0.0
     },
     {
-      "codigo": "88264",
+      "codigo": "882645",
       "a_banco": "SINAPI",
       "a_desc": "ELETRICISTA COM ENCARGOS COMPLEMENTARES",
       "a_valor": 34.41,
-      "b_desc": "ELETRICISTA COM ENCARGOS COMPLEMENTARES",
-      "b_valor": 34.41,
-      "match": true,
-      "dif_abs": 0.0,
-      "dif_rel": 0.0
+      "b_desc": null,
+      "b_valor": null,
+      "match": false,
+      "dif_abs": null,
+      "dif_rel": null
     },
     {
       "codigo": "95332",
@@ -185,6 +185,34 @@
       "dif_abs": 0.00999999999999801,
       "dif_rel": 0.00032488628979850586,
       "dir": "MAIOR"
+    },
+    {
+      "codigo": "103251",
+      "motivos": [
+        "VALOR_DIVERGENTE",
+        "DESCRICAO_DIVERGENTE"
+      ],
+      "dif_abs": 3455.8599999999997,
+      "dif_rel": 0.9953055158748444,
+      "dir": "MENOR"
+    },
+    {
+      "codigo": "88316",
+      "motivos": [
+        "DESCRICAO_DIVERGENTE"
+      ],
+      "dif_abs": 0.0,
+      "dif_rel": 0.0,
+      "dir": ""
+    },
+    {
+      "codigo": "882645",
+      "motivos": [
+        "CODIGO_NAO_ENCONTRADO"
+      ],
+      "dif_abs": null,
+      "dif_rel": null,
+      "dir": ""
     }
   ]
 }
