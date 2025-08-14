@@ -245,4 +245,3 @@ python -m src.cli run-both-auto   --orc "data/ORÇAMENTO - ACIONAMENTO 01 - REV 
 
 ---
 
-Qualquer ajuste fino que você quiser (mais colunas, tolerâncias, filtros ou novos bancos), me chama e a gente pluga direitinho no pipeline. 💪
