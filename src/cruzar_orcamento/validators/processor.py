@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 from typing import TypedDict, List, Tuple, Dict, Optional
-from .models import Item, CanonDict
-from .utils.utils_text import norm_text
+from ..models import Item, CanonDict
+from ..utils.utils_text import norm_text
 
 
 class CruzadoRow(TypedDict):

@@ -7,20 +7,25 @@ import argparse
 
 from cruzar_orcamento.adapters.estrutura_orcamento import load_estrutura_orcamento
 from cruzar_orcamento.adapters.estrutura_sinapi import load_estrutura_sinapi_analitico
+from cruzar_orcamento.adapters.estrutura_sudecap import load_estrutura_sudecap
 from cruzar_orcamento.validators.estrutura_compare import comparar_estruturas
 
 
 def main():
     p = argparse.ArgumentParser(
-        description="Valida a ESTRUTURA (pais/filhos 1º nível) do ORÇAMENTO contra uma BASE (ORCAMENTO ou SINAPI Analítico)."
+        description=(
+            "Valida a ESTRUTURA (pais/filhos 1º nível) do ORÇAMENTO contra uma BASE "
+            "(ORCAMENTO, SINAPI Analítico ou SUDECAP Relatório)."
+        )
     )
     p.add_argument("--orc", required=True, help="Arquivo do ORÇAMENTO (aba(s) de Composições).")
-    p.add_argument("--base", required=True, help="Arquivo da base de referência (ORÇAMENTO ou SINAPI_YYYY_MM.xlsx).")
+    p.add_argument("--banco-a", default="", help="Filtrar no ORÇAMENTO apenas pais deste banco (ex.: SINAPI, SUDECAP).")
+    p.add_argument("--base", required=True, help="Arquivo da base de referência (ORÇAMENTO, SINAPI_YYYY_MM.xlsx ou SUDECAP_*.xls).")
     p.add_argument(
         "--base-type",
-        choices=["ORCAMENTO", "SINAPI"],
+        choices=["ORCAMENTO", "SINAPI", "SUDECAP"],
         required=True,
-        help="Tipo da base: ORCAMENTO (estrutura_orcamento) ou SINAPI (aba Analítico)."
+        help="Tipo da base: ORCAMENTO (mesmo parser do orçamento), SINAPI (aba Analítico) ou SUDECAP (Relatório de Composições)."
     )
     p.add_argument(
         "--json-out",
@@ -32,27 +37,25 @@ def main():
         default="Analítico",
         help="(Opcional) Nome da aba Analítico no SINAPI. Default: 'Analítico'."
     )
-    p.add_argument(
-        "--banco-a",
-        default="",
-        help="Se informado, filtra os PAIS do ORÇAMENTO por este banco (ex.: SINAPI)."
-    )
     args = p.parse_args()
 
     print("== Validar estrutura (A=ORÇAMENTO vs B=BASE) ==")
     print(f"A(orc): {args.orc}")
     print(f"B(base): {args.base}  (tipo={args.base_type})")
 
-    # A: estrutura do orçamento (pais + filhos de 1º nível)
-    A = load_estrutura_orcamento(args.orc, banco=(args.banco_a or None))
+    # A: estrutura do orçamento (pais + filhos 1º nível), com filtro por banco (se fornecido)
+    banco_a = (args.banco_a or "").strip() or None
+    A = load_estrutura_orcamento(args.orc, banco=banco_a)
 
     # B: dependendo do tipo
     if args.base_type == "ORCAMENTO":
-        B = load_estrutura_orcamento(args.base)
+        B = load_estrutura_orcamento(args.base)  # sem filtro (é a base inteira)
     elif args.base_type == "SINAPI":
         B = load_estrutura_sinapi_analitico(args.base, sheet_name=args.sinapi_sheet)
+    elif args.base_type == "SUDECAP":
+        B = load_estrutura_sudecap(args.base)
     else:
-        raise SystemExit("[ERRO] Base-type ainda não suportado aqui.")
+        raise SystemExit("[ERRO] base-type não suportado.")
 
     diverg = comparar_estruturas(A, B)
     print(f"\nDivergências encontradas: {len(diverg)}")

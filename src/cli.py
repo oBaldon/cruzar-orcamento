@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 from cruzar_orcamento.adapters.orcamento import load_orcamento
 from cruzar_orcamento.adapters.sudecap import load_sudecap
 from cruzar_orcamento.adapters.sinapi import load_sinapi_ccd_pr
-from cruzar_orcamento.processor import cruzar
+from cruzar_orcamento.validators.processor import cruzar
 from cruzar_orcamento.exporters.excel import export_cruzamento_excel
 
 # ---------------------------------------------------------------------

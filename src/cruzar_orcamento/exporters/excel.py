@@ -106,7 +106,6 @@ def export_cruzamento_excel(
         c_da = col_idx("dif_abs")
         c_dr = col_idx("dif_rel")
 
-        from openpyxl.styles import numbers
         for r in ws_c.iter_rows(min_row=2):
             if c_a: r[c_a-1].number_format = number_format_currency
             if c_b: r[c_b-1].number_format = number_format_currency
